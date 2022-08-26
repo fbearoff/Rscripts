@@ -29,6 +29,8 @@ library(ggplot2)
 library(cowplot)
 suppressMessages(library(viridis))
 library(forcats)
+library(grid)
+suppressMessages(library(gridExtra))
 
 control <- opt$control
 
@@ -46,7 +48,11 @@ fit_aov <- function(col) {
 
 anovas <- map(data[, 2:ncol(data)], fit_aov)
 
-res <- data.frame(gene = character(), anova_pval = numeric())
+res <- data.frame(
+  gene = character(),
+  anova_pval = numeric(),
+  fdr = numeric()
+)
 
 for (cond in which(!levels(data$condition) %in% control)) {
   res[[paste(levels(data$condition)[cond], control, sep = "-")]] <- numeric()
@@ -54,7 +60,7 @@ for (cond in which(!levels(data$condition) %in% control)) {
 
 ra_command <- paste0("add_row(res, gene = i, anova_pval = p")
 
-for (cond in names(res[, 3:ncol(res)])) {
+for (cond in names(res[, 4:ncol(res)])) {
   ra_command <- paste0(
     ra_command,
     ", '",
@@ -74,6 +80,11 @@ for (i in names(anovas)) {
   )[[1]])
   res <- eval(parse(text = ra_command))
 }
+
+res$fdr <- p.adjust(
+  p = res$anova_pval,
+  method = "fdr"
+)
 
 print(res)
 
@@ -95,9 +106,9 @@ for (gene in colnames(data[, 2:ncol(data)])) {
       geom_boxplot() +
       labs(
         title = gene,
-        subtitle = paste0("p=", round(res[res$gene == gene, 2], digits = 3))
+        subtitle = paste0("padj=", round(res[res$gene == gene, 3], digits = 3))
       ) +
-      ylab(paste("Expression relative to", control, sep = " ")) +
+      ylab(NULL) +
       xlab(NULL) +
       scale_y_log10() +
       scale_fill_viridis(discrete = TRUE) +
@@ -111,9 +122,29 @@ for (gene in colnames(data[, 2:ncol(data)])) {
 
 p1 <- suppressWarnings(cowplot::plot_grid(plotlist = boxplots))
 
+title <- ggdraw() +
+  draw_label(
+    paste0("ANOVA of each gene in ", basename(opt$file)),
+    fontface = "bold",
+    hjust = 0.5
+  )
+
+p1 <- plot_grid(
+  title, p1,
+  ncol = 1,
+  rel_heights = c(0.1, 1)
+)
+
+y_title <- textGrob(paste("Expression relative to", control, sep = " "),
+  gp = gpar(fontface = "bold", fontsize = 15),
+  rot = 90
+)
+
+p1 <- suppressWarnings(grid.arrange(arrangeGrob(p1, left = y_title)))
+
 ggsave(
   plot = p1,
-  file = "fly.pdf",
+  file = paste0(tools::file_path_sans_ext(opt$file), "_boxplots.pdf"),
   width = 11,
   height = 8.5,
   units = "in",
