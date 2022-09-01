@@ -106,7 +106,7 @@ for (gene in colnames(data[, 2:ncol(data)])) {
       geom_boxplot() +
       labs(
         title = gene,
-        subtitle = paste0("padj=", round(res[res$gene == gene, 3], digits = 3))
+        subtitle = paste0("padj=", signif(res[res$gene == gene, 3], digits = 3))
       ) +
       ylab(NULL) +
       xlab(NULL) +
@@ -124,7 +124,7 @@ p1 <- suppressWarnings(cowplot::plot_grid(plotlist = boxplots))
 
 title <- ggdraw() +
   draw_label(
-    paste0("ANOVA of each gene in ", basename(opt$file)),
+    paste0('ANOVA of each gene in "', basename(opt$file), '"'),
     fontface = "bold",
     hjust = 0.5
   )
@@ -140,7 +140,9 @@ y_title <- textGrob(paste("Expression relative to", control, sep = " "),
   rot = 90
 )
 
+pdf(NULL)
 p1 <- suppressWarnings(grid.arrange(arrangeGrob(p1, left = y_title)))
+invisible(dev.off())
 
 ggsave(
   plot = p1,
