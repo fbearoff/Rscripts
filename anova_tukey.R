@@ -5,25 +5,20 @@ option_list <- list(
   make_option(c("-f", "--file"),
     type = "character", default = NULL,
     help = "dataset file name", metavar = "character"
-  ),
-  make_option(c("-c", "--control"),
-    type = "character", default = NULL,
-    help = "control condition", metavar = "character"
   )
-)
+ )
 opt_parser <- OptionParser(option_list = option_list)
 opt <- parse_args(opt_parser)
 
 if (is.null(opt$file)) {
   print_help(opt_parser)
-  stop("At least two arguments must be supplied (input file and control condition).n",
+  stop("At least one argument must be supplied (input file).n",
     call. = FALSE
   )
 }
 
 library(readr)
 library(purrr)
-library(DescTools)
 suppressMessages(library(dplyr))
 library(ggplot2)
 library(cowplot)
@@ -32,8 +27,6 @@ library(forcats)
 library(grid)
 suppressMessages(library(gridExtra))
 
-control <- opt$control
-
 data <- read_csv(
   file = opt$file,
   na = c("", "NA", "N/A", "#DIV/0!"),
@@ -41,7 +34,7 @@ data <- read_csv(
 )
 data$condition <- as.factor(data$condition)
 
-# 1-way ANOVA with Dunnett test against control
+# 1-way ANOVA with Tukey HSD
 fit_aov <- function(col) {
   aov(col ~ condition, data = data)
 }
@@ -54,8 +47,8 @@ res <- data.frame(
   fdr = numeric()
 )
 
-for (cond in which(!levels(data$condition) %in% control)) {
-  res[[paste(levels(data$condition)[cond], control, sep = "-")]] <- numeric()
+for (cond in rownames(TukeyHSD(anovas[[1]])$condition)) {
+  res[cond] <- numeric()
 }
 
 ra_command <- paste0("add_row(res, gene = i, anova_pval = p")
@@ -68,16 +61,14 @@ for (cond in names(res[, 4:ncol(res)])) {
     "' = ",
     "d['",
     cond,
-    "', 'pval']"
+    "', 'p adj']"
   )
 }
 ra_command <- paste0(ra_command, ")")
 
 for (i in names(anovas)) {
   p <- summary(anovas[[i]])[[1]][["Pr(>F)"]][1]
-  d <- as.data.frame(DunnettTest(data[[i]], as.factor(data$condition),
-    control = control
-  )[[1]])
+  d <- as.data.frame(TukeyHSD(anovas[[i]])$condition)
   res <- eval(parse(text = ra_command))
 }
 
@@ -90,7 +81,7 @@ print(res)
 
 write_csv(
   x = res,
-  file = paste0(tools::file_path_sans_ext(opt$file), "_anova_dunnett.csv")
+  file = paste0(tools::file_path_sans_ext(opt$file), "_anova_tukey.csv")
 )
 
 # Boxplot of each gene
@@ -135,7 +126,7 @@ p1 <- plot_grid(
   rel_heights = c(0.1, 1)
 )
 
-y_title <- textGrob(paste("Expression relative to", control, sep = " "),
+y_title <- textGrob("Abundance",
   gp = gpar(fontface = "bold", fontsize = 15),
   rot = 90
 )
