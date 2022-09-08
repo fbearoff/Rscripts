@@ -19,16 +19,17 @@ if (is.null(opt$file)) {
 
 library(readr)
 library(purrr)
-suppressMessages(library(dplyr))
-library(ggplot2)
-library(cowplot)
-suppressMessages(library(viridis))
 library(forcats)
+suppressMessages(library(viridis))
+library(ggplot2)
+suppressMessages(library(tidyverse))
+suppressMessages(library(ggpubr))
+suppressMessages(library(rstatix))
+suppressMessages(library(cowplot))
 library(grid)
 suppressMessages(library(gridExtra))
 
-data <- read_csv(
-  file = opt$file,
+data <- read_csv(file = opt$file,
   na = c("", "NA", "N/A", "#DIV/0!"),
   show_col_types = FALSE
 )
@@ -39,7 +40,7 @@ fit_aov <- function(col) {
   aov(col ~ condition, data = data)
 }
 
-anovas <- map(data[, 2:ncol(data)], fit_aov)
+anovas <- map(data[, 3:ncol(data)], fit_aov)
 
 res <- data.frame(
   gene = character(),
@@ -77,31 +78,42 @@ res$fdr <- p.adjust(
   method = "fdr"
 )
 
-print(res)
-
 write_csv(
   x = res,
   file = paste0(tools::file_path_sans_ext(opt$file), "_anova_tukey.csv")
 )
 
+print(res)
+
 # Boxplot of each gene
 boxplots <- list()
-for (gene in colnames(data[, 2:ncol(data)])) {
+for (gene in colnames(data[, 3:ncol(data)])) {
   boxplots[[gene]] <- local({
     gene <- gene
-    p1 <- ggplot(data, aes(
-      x = fct_inorder(condition),
-      y = data[[gene]],
-      fill = condition
-    )) +
-      geom_boxplot() +
+    res_aov <- data %>% suppressMessages(anova_test(as.formula(paste(
+      gene,
+      "~ condition"
+    ))))
+    stat_test <- data %>% tukey_hsd(as.formula(paste(gene, "~ condition")))
+    stat_test <- stat_test %>% add_xy_position(x = "condition")
+    stat_test <<- stat_test
+    p1 <- ggboxplot(data,
+      x = paste("condition"),
+      y = gene,
+      fill = "condition",
+      order = levels(fct_inorder(data$condition))
+    ) +
+      stat_pvalue_manual(stat_test,
+        label = "p.adj.signif",
+        tip.length = 0.01,
+        hide.ns = TRUE
+      ) +
       labs(
         title = gene,
         subtitle = paste0("padj=", signif(res[res$gene == gene, 3], digits = 3))
       ) +
       ylab(NULL) +
       xlab(NULL) +
-      scale_y_log10() +
       scale_fill_viridis(discrete = TRUE) +
       theme(
         legend.position = "none",
@@ -119,9 +131,14 @@ title <- ggdraw() +
     fontface = "bold",
     hjust = 0.5
   )
+caption <- ggdraw() +
+  draw_label(get_pwc_label(stat_test),
+    fontface = "plain",
+    hjust = 0.5
+  )
 
 p1 <- plot_grid(
-  title, p1,
+  title, p1, caption,
   ncol = 1,
   rel_heights = c(0.1, 1)
 )
