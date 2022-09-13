@@ -19,7 +19,6 @@ if (is.null(opt$file)) {
 
 library(readr)
 library(purrr)
-library(forcats)
 suppressMessages(library(viridis))
 library(ggplot2)
 suppressMessages(library(tidyverse))
@@ -29,7 +28,8 @@ suppressMessages(library(cowplot))
 library(grid)
 suppressMessages(library(gridExtra))
 
-data <- read_csv(file = opt$file,
+data <- read_csv(
+  file = opt$file,
   na = c("", "NA", "N/A", "#DIV/0!"),
   show_col_types = FALSE
 )
@@ -96,12 +96,12 @@ for (gene in colnames(data[, 3:ncol(data)])) {
     ))))
     stat_test <- data %>% tukey_hsd(as.formula(paste(gene, "~ condition")))
     stat_test <- stat_test %>% add_xy_position(x = "condition")
-    stat_test <<- stat_test
+    stat_test_last <<- stat_test
     p1 <- ggboxplot(data,
       x = paste("condition"),
       y = gene,
       fill = "condition",
-      order = levels(fct_inorder(data$condition))
+      order = levels(data$condition)
     ) +
       stat_pvalue_manual(stat_test,
         label = "p.adj.signif",
@@ -132,7 +132,7 @@ title <- ggdraw() +
     hjust = 0.5
   )
 caption <- ggdraw() +
-  draw_label(get_pwc_label(stat_test),
+  draw_label(get_pwc_label(stat_test_last),
     fontface = "plain",
     hjust = 0.5
   )
