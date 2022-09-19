@@ -19,85 +19,51 @@ if (is.null(opt$file)) {
 
 library(readr)
 library(purrr)
-suppressMessages(library(viridis))
+suppressMessages(library(dplyr))
 library(ggplot2)
-suppressMessages(library(tidyverse))
-suppressMessages(library(ggpubr))
-suppressMessages(library(rstatix))
-suppressMessages(library(cowplot))
+library(cowplot)
+suppressMessages(library(viridis))
+library(forcats)
 library(grid)
 suppressMessages(library(gridExtra))
+suppressMessages(library(ggpubr))
+suppressMessages(library(rstatix))
 
 data <- read_csv(
-  # file = "~/downloads/fly_sampledrop.csv",
   file = opt$file,
   na = c("", "NA", "N/A", "#DIV/0!"),
   show_col_types = FALSE
 )
 data$condition <- as.factor(data$condition)
 
-# 1-way ANOVA with Tukey HSD
-fit_aov <- function(col) {
-  aov(col ~ condition, data = data)
+# t-test per column against condition, assuming equal group variance
+res <- data %>% t_test(as.formula(paste(colnames(data[3]), "~ condition")), detailed = TRUE)
+for (i in colnames(data[4:ncol(data)])) {
+  res <- add_row(res, data %>% t_test(as.formula(paste(i, "~ condition")), detailed = TRUE))
 }
-
-anovas <- map(data[, 3:ncol(data)], fit_aov)
-
-res <- data.frame(
-  gene = character(),
-  anova_pval = numeric(),
-  fdr = numeric()
-)
-
-for (cond in rownames(TukeyHSD(anovas[[1]])$condition)) {
-  res[cond] <- numeric()
-}
-
-ra_command <- paste0("add_row(res, gene = i, anova_pval = p")
-
-for (cond in names(res[, 4:ncol(res)])) {
-  ra_command <- paste0(
-    ra_command,
-    ", '",
-    cond,
-    "' = ",
-    "d['",
-    cond,
-    "', 'p adj']"
-  )
-}
-ra_command <- paste0(ra_command, ")")
-
-for (i in names(anovas)) {
-  p <- summary(anovas[[i]])[[1]][["Pr(>F)"]][1]
-  d <- as.data.frame(TukeyHSD(anovas[[i]])$condition)
-  res <- eval(parse(text = ra_command))
-}
-
-res$fdr <- p.adjust(
-  p = res$anova_pval,
-  method = "fdr"
-)
-
-write_csv(
-  x = res,
-  file = paste0(tools::file_path_sans_ext(opt$file), "_anova_tukey.csv")
-)
+res <- res %>%
+  adjust_pvalue(method = "fdr") %>%
+  add_significance()
+res <- rename(res, term = .y.)
 
 print(res)
 
+write_csv(
+  x = res,
+  file = paste0(tools::file_path_sans_ext(opt$file), "_multiple_ttests.csv")
+)
+
 # Boxplot of each gene
 boxplots <- list()
-suppressWarnings(for (gene in colnames(data[, 3:ncol(data)])) {
+for (gene in colnames(data[, 3:ncol(data)])) {
   boxplots[[gene]] <- local({
     gene <- gene
-    res_aov <- data %>% suppressMessages(anova_test(as.formula(paste(
-      gene,
-      "~ condition"
-    ))))
-    stat_test <- data %>% tukey_hsd(as.formula(paste(gene, "~ condition")))
-    stat_test <- stat_test %>% add_xy_position(x = "condition")
-    stat_test_last <<- stat_test
+    stat_test <- data %>% t_test(as.formula(paste(gene, "~ condition")))
+    stat_test <- stat_test %>% mutate(y.position = as.numeric(data %>% get_y_position(as.formula(paste(gene, "~ condition"))) %>% select(y.position)))
+    stat_test <- stat_test %>% mutate(p.adj = as.character(res %>% filter(term == paste(gene)) %>% select(p.adj)))
+    stat_test <- stat_test %>% mutate(p.adj.signif = as.character(res %>% filter(term == paste(gene)) %>% select(p.adj.signif)))
+    stat_test <- stat_test %>% rename(condition = .y.)
+
     p1 <- ggboxplot(data,
       x = paste("condition"),
       y = gene,
@@ -107,39 +73,38 @@ suppressWarnings(for (gene in colnames(data[, 3:ncol(data)])) {
       stat_pvalue_manual(stat_test,
         label = "p.adj.signif",
         tip.length = 0.01,
-        hide.ns = TRUE
       ) +
       labs(
         title = gene,
-        subtitle = bquote(p[adj]== .(format(signif(as.numeric(res[res$gene == gene, 3]), digits = 3), scientific = -2, digits = 3)))
+        subtitle = bquote(p[adj]== .(format(signif(as.numeric(res[res$term == gene, 16]), digits = 3), scientific = -2, digits = 3)))
       ) +
       ylab(NULL) +
       xlab(NULL) +
       scale_fill_viridis(discrete = TRUE) +
+      theme_pubr() +
       theme(
         legend.position = "none",
         plot.title = element_text(
           hjust = 0.5,
           face = "bold"
         ),
-        plot.subtitle = element_text(
-          hjust = 0.5,
-          size = rel(0.8)
-        )
+        plot.subtitle = element_text(hjust = 0.5)
       )
   })
-})
+}
 
 p1 <- suppressWarnings(cowplot::plot_grid(plotlist = boxplots))
+print(p1)
 
 title <- ggdraw() +
   draw_label(
-    paste0('ANOVA of each gene in "', basename(opt$file), '"'),
+    paste0('T-test of each gene in "', basename(opt$file), '"'),
     fontface = "bold",
     hjust = 0.5
   )
+
 caption <- ggdraw() +
-  draw_label(get_pwc_label(stat_test_last),
+  draw_label(get_pwc_label(res),
     fontface = "plain",
     hjust = 0.5
   )
