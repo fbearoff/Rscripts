@@ -29,10 +29,10 @@ library(grid)
 suppressMessages(library(gridExtra))
 
 data <- read_csv(
-  # file = "~/downloads/fly_sampledrop.csv",
   file = opt$file,
   na = c("", "NA", "N/A", "#DIV/0!"),
-  show_col_types = FALSE
+  show_col_types = FALSE,
+  name_repair = "universal"
 )
 data$condition <- as.factor(data$condition)
 
@@ -111,7 +111,7 @@ suppressWarnings(for (gene in colnames(data[, 3:ncol(data)])) {
       ) +
       labs(
         title = gene,
-        subtitle = bquote(p[adj]== .(format(signif(as.numeric(res[res$gene == gene, 3]), digits = 3), scientific = -2, digits = 3)))
+        subtitle = bquote(ANOVA ~ p[adj] == .(format(signif(as.numeric(res[res$gene == gene, 3]), digits = 3), scientific = -2, digits = 2)))
       ) +
       ylab(NULL) +
       xlab(NULL) +
@@ -138,11 +138,22 @@ title <- ggdraw() +
     fontface = "bold",
     hjust = 0.5
   )
-caption <- ggdraw() +
+
+test_stat_caption <- ggdraw() +
   draw_label(get_pwc_label(stat_test_last),
     fontface = "plain",
     hjust = 0.5
   )
+
+stars <- ggdraw() +
+  draw_label("* p<0.05, ** p<0.01, *** p<0.001",
+    hjust = 0.5
+  )
+
+caption <- plot_grid(
+  test_stat_caption, stars,
+  ncol = 2
+)
 
 p1 <- plot_grid(
   title, p1, caption,

@@ -19,6 +19,7 @@ if (is.null(opt$file)) {
 
 library(readr)
 library(purrr)
+library(stringr)
 suppressMessages(library(dplyr))
 library(ggplot2)
 library(cowplot)
@@ -32,7 +33,8 @@ suppressMessages(library(rstatix))
 data <- read_csv(
   file = opt$file,
   na = c("", "NA", "N/A", "#DIV/0!"),
-  show_col_types = FALSE
+  show_col_types = FALSE,
+  name_repair = "universal"
 )
 data$condition <- as.factor(data$condition)
 
@@ -63,6 +65,7 @@ for (gene in colnames(data[, 3:ncol(data)])) {
     stat_test <- stat_test %>% mutate(p.adj = as.character(res %>% filter(term == paste(gene)) %>% select(p.adj)))
     stat_test <- stat_test %>% mutate(p.adj.signif = as.character(res %>% filter(term == paste(gene)) %>% select(p.adj.signif)))
     stat_test <- stat_test %>% rename(condition = .y.)
+    stat_test_last <<- stat_test
 
     p1 <- ggboxplot(data,
       x = paste("condition"),
@@ -73,14 +76,15 @@ for (gene in colnames(data[, 3:ncol(data)])) {
       stat_pvalue_manual(stat_test,
         label = "p.adj.signif",
         tip.length = 0.01,
+      label.size = 6
       ) +
       labs(
-        title = gene,
-        subtitle = bquote(p[adj]== .(format(signif(as.numeric(res[res$term == gene, 16]), digits = 3), scientific = -2, digits = 3)))
+        title = str_replace_all(gene, "\\.", " "),
+      subtitle = bquote(P[adj]== .(format(signif(as.numeric(res[res$term == gene, 16]), digits = 3), scientific = -2, digits = 2)))
       ) +
       ylab(NULL) +
       xlab(NULL) +
-      scale_fill_viridis(discrete = TRUE) +
+      scale_fill_viridis(discrete = TRUE, option = "viridis", begin = .2, end = .8) +
       theme_pubr() +
       theme(
         legend.position = "none",
@@ -88,13 +92,14 @@ for (gene in colnames(data[, 3:ncol(data)])) {
           hjust = 0.5,
           face = "bold"
         ),
-        plot.subtitle = element_text(hjust = 0.5)
+        plot.subtitle = element_text(
+          hjust = 0.5
+        )
       )
   })
 }
 
-p1 <- suppressWarnings(cowplot::plot_grid(plotlist = boxplots))
-print(p1)
+p1 <- suppressWarnings(plot_grid(plotlist = boxplots))
 
 title <- ggdraw() +
   draw_label(
@@ -103,11 +108,21 @@ title <- ggdraw() +
     hjust = 0.5
   )
 
-caption <- ggdraw() +
-  draw_label(get_pwc_label(res),
+test_stat_caption <- ggdraw() +
+  draw_label(get_pwc_label(stat_test_last),
     fontface = "plain",
     hjust = 0.5
   )
+
+stars <- ggdraw() +
+  draw_label("* p<0.05, ** p<0.01, *** p<0.001",
+    hjust = 0.5
+  )
+
+caption <- plot_grid(
+  test_stat_caption, stars,
+  ncol = 2
+)
 
 p1 <- plot_grid(
   title, p1, caption,
@@ -127,8 +142,8 @@ invisible(dev.off())
 ggsave(
   plot = p1,
   file = paste0(tools::file_path_sans_ext(opt$file), "_boxplots.pdf"),
-  width = 11,
-  height = 8.5,
+  width = 22,
+  height = 17,
   units = "in",
   dpi = "print"
 )
