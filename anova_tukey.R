@@ -27,6 +27,7 @@ suppressMessages(library(rstatix))
 suppressMessages(library(cowplot))
 library(grid)
 suppressMessages(library(gridExtra))
+library(forcats)
 
 data <- read_csv(
   file = opt$file,
@@ -34,7 +35,7 @@ data <- read_csv(
   show_col_types = FALSE,
   name_repair = "universal"
 )
-data$condition <- as.factor(data$condition)
+data$condition <- fct_inorder(data$condition)
 
 # 1-way ANOVA with Tukey HSD
 fit_aov <- function(col) {
@@ -173,8 +174,8 @@ invisible(dev.off())
 ggsave(
   plot = p1,
   file = paste0(tools::file_path_sans_ext(opt$file), "_boxplots.pdf"),
-  width = 11,
-  height = 8.5,
+  width = 22,
+  height = 17,
   units = "in",
   dpi = "print"
 )
