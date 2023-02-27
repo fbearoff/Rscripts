@@ -103,7 +103,9 @@ suppressWarnings(for (gene in colnames(data[, 3:ncol(data)])) {
       x = paste("condition"),
       y = gene,
       fill = "condition",
-      order = levels(data$condition)
+      order = levels(data$condition),
+      shape = 1,
+      add = "jitter"
     ) +
       stat_pvalue_manual(stat_test,
         label = "p.adj.signif",
